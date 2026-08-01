@@ -5,6 +5,7 @@ mod audio;
 mod autostart;
 mod config;
 mod hook;
+mod media;
 mod ui;
 mod win;
 

@@ -30,6 +30,7 @@ use windows::{
 use crate::{
 	app::{App, TICK_MS},
 	hook::{self, Command, WM_KNOB_COMMAND},
+	media::{Report, WM_KNOB_MEDIA},
 	ui::{
 		layout::{CLIENT_HEIGHT, CLIENT_WIDTH},
 		tray::{Tray, WM_TRAY, tray_event},
@@ -224,6 +225,13 @@ unsafe extern "system" fn window_proc(
 		| WM_KNOB_COMMAND => {
 			if let (Some(app), Some(command)) = (app_of(window), Command::from_code(wparam.0)) {
 				app.on_knob(command);
+			}
+
+			return LRESULT(0);
+		},
+		| WM_KNOB_MEDIA => {
+			if let (Some(app), Some(report)) = (app_of(window), Report::from_code(wparam.0)) {
+				app.on_media(report);
 			}
 
 			return LRESULT(0);

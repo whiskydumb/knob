@@ -10,6 +10,7 @@ spotify, discord or the browser instead of the system volume.
 
 - per-application volume from the knob, system volume left alone
 - picks up whatever is currently playing, or takes an executable name by hand
+- a smaller step near the bottom of the range, where a whole percent is a jump
 - configurable direction, step size and press action
 - falls back to the system volume when the target is silent
 - lives in the tray, optional autostart, no elevation required
@@ -27,6 +28,21 @@ spotify, discord or the browser instead of the system volume.
   executable name, and `ISimpleAudioVolume` moves the level. a target that owns
   several sessions, as every chromium-based browser does, gets all of them moved
   together.
+- **stepping**: the scalar core audio exposes is linear in amplitude, so the same
+  percent is a far bigger jump at 5% than at 80%. below the configured threshold
+  the detent shrinks to the fine step. the threshold belongs to the fine zone on
+  the way down and to the coarse one on the way up, which makes every detent
+  exactly reversible: 10% lowers to 9.5%, 9.5% raises back to 10%, and 10% raises
+  to 15%. each write is snapped to a tenth of a percentage point so a long turn
+  cannot accumulate rounding error.
+- **skipping**: the media session api is a separate subsystem from the mixer's
+  and has no notion of a process, so the target is matched against the
+  application user model id its player registered. that is the executable path
+  for some players and a product name for others, so a miss is expected and falls
+  back to whatever windows considers the current session, which is the session
+  the media keys would have driven anyway. the call is winrt and cannot be waited
+  on from the window's apartment, so it runs on a worker thread and posts the
+  outcome back.
 - **falling back**: while the target is not playing anything the hook is disarmed
   and the keys pass through untouched, so closing spotify turns the knob back into
   a plain system volume knob instead of a dead one.
@@ -60,7 +76,9 @@ the window is the whole configuration surface:
 | target application | the executable whose volume the knob drives. the dropdown lists everything currently holding an audio session, and the field is editable, so an application that is silent right now can be typed in by hand |
 | raise / lower volume key | which physical direction raises the volume; picking one flips the other |
 | volume step | how much one detent moves the level, 1-25% |
-| knob press | mute the target, cycle to the next remembered target, pass the key through to whatever is focused, or swallow it |
+| fine step | the smaller step used inside the fine zone, 0.1-2.5% |
+| fine step below | the level under which the knob switches to the fine step, or off |
+| knob press | mute the target, cycle to the next remembered target, skip a track forward or back, pass the key through to whatever is focused, or swallow it. one press does one thing, so the direction of the skip is picked here rather than from a gesture |
 | launch on startup | writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
 | save | applies everything and writes the config |
 
@@ -85,7 +103,8 @@ run key does not launch elevated entries.
 
 `WH_KEYBOARD_LL` is a documented user-mode api. it injects no dll, reads no foreign
 memory, and knob never synthesizes input with `SendInput`, which is the pattern
-anti-cheats actually look for in macro tools.
+anti-cheats actually look for in macro tools. track skipping goes through the
+media session api rather than a synthetic media key, so that stays true.
 
 that said, some anti-cheats dislike the combination of a global hook and an
 elevated process and may refuse to start until the program is closed. the tray

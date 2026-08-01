@@ -195,9 +195,7 @@ impl Mixer {
 			.and_then(|session| unsafe { session.GetMasterVolume() }.ok()))
 	}
 
-	pub(crate) fn invalidate(&mut self) {
-		self.cache = None;
-	}
+	pub(crate) fn invalidate(&mut self) { self.cache = None; }
 
 	fn sessions_for(&mut self, target: &str) -> Result<Vec<ISimpleAudioVolume>> {
 		let fresh = self.cache.as_ref().is_some_and(|cache| {
@@ -264,9 +262,7 @@ impl Mixer {
 	}
 }
 
-fn snap(level: f32) -> f32 {
-	(level * GRID).round() / GRID
-}
+fn snap(level: f32) -> f32 { (level * GRID).round() / GRID }
 
 /// `None` for the system sounds pseudo-session and for processes that have
 /// exited.

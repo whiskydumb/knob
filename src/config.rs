@@ -94,6 +94,10 @@ pub(crate) enum PressAction {
 	PassThrough,
 	/// swallow the key and do nothing.
 	Disabled,
+	/// one press, one direction: which of the two the knob sends is a setting
+	/// rather than a gesture, so a click stays a click.
+	NextTrack,
+	PreviousTrack,
 }
 
 impl PressAction {
@@ -106,6 +110,8 @@ impl PressAction {
 			| Self::NextTarget => 1,
 			| Self::PassThrough => 2,
 			| Self::Disabled => 3,
+			| Self::NextTrack => 4,
+			| Self::PreviousTrack => 5,
 		}
 	}
 
@@ -114,6 +120,8 @@ impl PressAction {
 			| 1 => Self::NextTarget,
 			| 2 => Self::PassThrough,
 			| 3 => Self::Disabled,
+			| 4 => Self::NextTrack,
+			| 5 => Self::PreviousTrack,
 			| _ => Self::MuteToggle,
 		}
 	}

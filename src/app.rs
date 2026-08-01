@@ -12,6 +12,7 @@ use crate::{
 		STEP_MIN, Settings, fine_below_from_index, fine_below_index,
 	},
 	hook::{self, Command, Hook},
+	media::{self, Report, Skip},
 	ui::{
 		layout::{
 			self, Controls, check_get, check_set, combo_add, combo_clear, combo_select,
@@ -216,8 +217,27 @@ impl App {
 		match self.settings.press_action {
 			| PressAction::MuteToggle => self.toggle_mute(),
 			| PressAction::NextTarget => self.cycle_target(),
+			| PressAction::NextTrack => self.skip(Skip::Next),
+			| PressAction::PreviousTrack => self.skip(Skip::Previous),
 			| PressAction::PassThrough | PressAction::Disabled => {},
 		}
+	}
+
+	/// the answer arrives as `WM_KNOB_MEDIA` rather than here, since the player
+	/// is asked from a thread of its own.
+	fn skip(&self, direction: Skip) {
+		media::skip(self.window, &self.settings.target, direction);
+	}
+
+	pub(crate) fn on_media(&self, report: Report) {
+		let text = match report {
+			| Report::Skipped(Skip::Next) => "skipped to the next track",
+			| Report::Skipped(Skip::Previous) => "skipped to the previous track",
+			| Report::NoSession => "nothing is playing to skip",
+			| Report::Refused => "the player would not skip",
+		};
+
+		self.set_status(text);
 	}
 
 	fn toggle_mute(&mut self) {
@@ -315,7 +335,14 @@ impl App {
 		combo_select(self.controls.lower, raise.opposite().index());
 
 		combo_clear(self.controls.press);
-		for name in ["Mute / unmute target", "Next target", "Pass through", "Do nothing"] {
+		for name in [
+			"Mute / unmute target",
+			"Next target",
+			"Pass through",
+			"Do nothing",
+			"Next track",
+			"Previous track",
+		] {
 			combo_add(self.controls.press, name);
 		}
 		combo_select(self.controls.press, self.settings.press_action.index());
