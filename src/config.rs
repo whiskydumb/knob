@@ -12,6 +12,41 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 pub(crate) const STEP_MIN: u8 = 1;
 pub(crate) const STEP_MAX: u8 = 25;
 
+/// the fine step is kept in tenths of a percent, which keeps the whole config
+/// integral while still expressing half a percent per detent.
+pub(crate) const FINE_STEP_MIN: u8 = 1;
+pub(crate) const FINE_STEP_MAX: u8 = 25;
+
+/// thresholds the dropdown offers, in percent; the first one turns the fine
+/// zone off.
+pub(crate) const FINE_BELOW_CHOICES: [u8; 6] = [0, 5, 10, 15, 20, 25];
+
+const FINE_BELOW_DEFAULT: u8 = 10;
+
+/// index into the threshold dropdown.
+pub(crate) fn fine_below_index(percent: u8) -> i32 {
+	FINE_BELOW_CHOICES
+		.iter()
+		.position(|&choice| choice == percent)
+		.unwrap_or(0) as i32
+}
+
+pub(crate) fn fine_below_from_index(index: i32) -> u8 {
+	usize::try_from(index)
+		.ok()
+		.and_then(|index| FINE_BELOW_CHOICES.get(index).copied())
+		.unwrap_or(FINE_BELOW_DEFAULT)
+}
+
+/// a hand-edited config can name any threshold, but the dropdown can only show
+/// the ones it lists, so the value is pulled to the closest of them.
+fn nearest_threshold(percent: u8) -> u8 {
+	FINE_BELOW_CHOICES
+		.into_iter()
+		.min_by_key(|choice| choice.abs_diff(percent))
+		.unwrap_or(FINE_BELOW_DEFAULT)
+}
+
 /// only the clockwise direction is stored: the counter-clockwise one is always
 /// the other key, which keeps the two ui dropdowns from ever describing an
 /// impossible mapping.
@@ -95,6 +130,11 @@ pub(crate) struct Settings {
 	/// the key that raises the volume; the other one lowers it.
 	pub(crate) raise_key: KnobKey,
 	pub(crate) step_percent: u8,
+	/// the level under which one detent moves by `fine_step_tenths` instead,
+	/// zero meaning the step never changes.
+	pub(crate) fine_below_percent: u8,
+	/// tenths of a percent, so `5` is half a percent per detent.
+	pub(crate) fine_step_tenths: u8,
 	pub(crate) press_action: PressAction,
 	pub(crate) launch_on_startup: bool,
 }
@@ -106,6 +146,8 @@ impl Default for Settings {
 			targets: Vec::new(),
 			raise_key: KnobKey::VolumeUp,
 			step_percent: 5,
+			fine_below_percent: FINE_BELOW_DEFAULT,
+			fine_step_tenths: 5,
 			press_action: PressAction::MuteToggle,
 			launch_on_startup: false,
 		}
@@ -155,6 +197,12 @@ impl Settings {
 
 	pub(crate) fn step_scalar(&self) -> f32 { f32::from(self.step_percent) / 100.0 }
 
+	pub(crate) fn fine_step_scalar(&self) -> f32 { f32::from(self.fine_step_tenths) / 1000.0 }
+
+	pub(crate) fn fine_threshold_scalar(&self) -> f32 {
+		f32::from(self.fine_below_percent) / 100.0
+	}
+
 	/// the target after the current one, wrapping around, or `None` when fewer
 	/// than two are configured.
 	pub(crate) fn next_target(&self) -> Option<&str> {
@@ -188,6 +236,10 @@ impl Settings {
 	/// clamps anything a hand-edited config file could have put out of range.
 	fn normalized(mut self) -> Self {
 		self.step_percent = self.step_percent.clamp(STEP_MIN, STEP_MAX);
+		self.fine_step_tenths = self
+			.fine_step_tenths
+			.clamp(FINE_STEP_MIN, FINE_STEP_MAX);
+		self.fine_below_percent = nearest_threshold(self.fine_below_percent);
 		self.targets.retain(|name| !name.is_empty());
 
 		let target = self.target.clone();

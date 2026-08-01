@@ -5,14 +5,17 @@ use windows::Win32::{
 };
 
 use crate::{
-	audio::Mixer,
+	audio::{Mixer, StepCurve},
 	autostart,
-	config::{KnobKey, PressAction, STEP_MAX, STEP_MIN, Settings},
+	config::{
+		FINE_BELOW_CHOICES, FINE_STEP_MAX, FINE_STEP_MIN, KnobKey, PressAction, STEP_MAX,
+		STEP_MIN, Settings, fine_below_from_index, fine_below_index,
+	},
 	hook::{self, Command, Hook},
 	ui::{
 		layout::{
 			self, Controls, check_get, check_set, combo_add, combo_clear, combo_select,
-			combo_selection, control_text, set_control_text, trackbar_get, trackbar_init,
+			combo_selection, control_text, enable, set_control_text, trackbar_get, trackbar_init,
 			trackbar_set,
 		},
 		tray::{MenuChoice, Tray},
@@ -74,8 +77,8 @@ impl App {
 
 	pub(crate) fn on_knob(&mut self, command: Command) {
 		match command {
-			| Command::Raise => self.step_volume(self.settings.step_scalar()),
-			| Command::Lower => self.step_volume(-self.settings.step_scalar()),
+			| Command::Raise => self.step_volume(true),
+			| Command::Lower => self.step_volume(false),
 			| Command::Press => self.on_press(),
 		}
 	}
@@ -100,15 +103,20 @@ impl App {
 				combo_select(self.controls.raise, lower.opposite().index());
 				self.mark_unsaved();
 			},
+			| (layout::id::FINE_BELOW, CBN_SELCHANGE) => {
+				self.sync_fine_enabled();
+				self.mark_unsaved();
+			},
 			| (layout::id::TARGET | layout::id::PRESS, CBN_SELCHANGE)
 			| (layout::id::STARTUP, BN_CLICKED) => self.mark_unsaved(),
 			| _ => {},
 		}
 	}
 
+	/// both labels are rewritten rather than the one that moved, which costs a
+	/// second window text and saves telling the two trackbars apart.
 	pub(crate) fn on_slider(&self) {
-		let step = trackbar_get(self.controls.step);
-		set_control_text(self.controls.step_label, &format!("Volume step: {step}% per detent"));
+		self.refresh_step_labels();
 		self.mark_unsaved();
 	}
 
@@ -178,16 +186,21 @@ impl App {
 		}
 	}
 
-	fn step_volume(&mut self, delta: f32) {
+	fn step_volume(&mut self, up: bool) {
 		let target = self.settings.target.clone();
 		if target.is_empty() {
 			return;
 		}
 
-		match self.mixer.adjust(&target, delta) {
+		let curve = StepCurve::new(
+			self.settings.step_scalar(),
+			self.settings.fine_step_scalar(),
+			self.settings.fine_threshold_scalar(),
+		);
+
+		match self.mixer.adjust(&target, curve, up) {
 			| Ok(Some(level)) => {
-				let percent = (level * 100.0).round() as i32;
-				self.set_status(&format!("{target} - {percent}%"));
+				self.set_status(&format!("{target} - {}", percent(level)));
 				self.update_tooltip();
 			},
 			| Ok(None) => {
@@ -258,12 +271,17 @@ impl App {
 		let press = PressAction::from_index(combo_selection(self.controls.press));
 		let step =
 			trackbar_get(self.controls.step).clamp(i32::from(STEP_MIN), i32::from(STEP_MAX));
+		let fine_below = fine_below_from_index(combo_selection(self.controls.fine_below));
+		let fine_step = trackbar_get(self.controls.fine_step)
+			.clamp(i32::from(FINE_STEP_MIN), i32::from(FINE_STEP_MAX));
 		let startup = check_get(self.controls.startup);
 
 		self.settings.target.clone_from(&target);
 		self.settings.raise_key = raise;
 		self.settings.press_action = press;
 		self.settings.step_percent = step as u8;
+		self.settings.fine_below_percent = fine_below;
+		self.settings.fine_step_tenths = fine_step as u8;
 		self.settings.launch_on_startup = startup;
 		self.settings.remember_target(&target);
 
@@ -304,14 +322,48 @@ impl App {
 
 		trackbar_init(self.controls.step, i32::from(STEP_MIN), i32::from(STEP_MAX));
 		trackbar_set(self.controls.step, i32::from(self.settings.step_percent));
-		set_control_text(
-			self.controls.step_label,
-			&format!("Volume step: {}% per detent", self.settings.step_percent),
+
+		combo_clear(self.controls.fine_below);
+		for choice in FINE_BELOW_CHOICES {
+			combo_add(self.controls.fine_below, &threshold_text(choice));
+		}
+		combo_select(
+			self.controls.fine_below,
+			fine_below_index(self.settings.fine_below_percent),
 		);
+
+		trackbar_init(
+			self.controls.fine_step,
+			i32::from(FINE_STEP_MIN),
+			i32::from(FINE_STEP_MAX),
+		);
+		trackbar_set(self.controls.fine_step, i32::from(self.settings.fine_step_tenths));
+
+		self.refresh_step_labels();
+		self.sync_fine_enabled();
 
 		check_set(self.controls.startup, autostart::is_enabled());
 
 		self.refresh_targets();
+	}
+
+	fn refresh_step_labels(&self) {
+		let step = trackbar_get(self.controls.step);
+		set_control_text(self.controls.step_label, &format!("Volume step: {step}% per detent"));
+
+		let tenths = trackbar_get(self.controls.fine_step);
+		set_control_text(self.controls.fine_label, &fine_step_text(tenths));
+	}
+
+	/// with no threshold there is no fine zone at all, so the trackbar is
+	/// greyed instead of being left looking as though it still did something.
+	/// the state comes from the dropdown rather than the settings, so it
+	/// follows the user before a save rather than after one.
+	fn sync_fine_enabled(&self) {
+		let on = fine_below_from_index(combo_selection(self.controls.fine_below)) != 0;
+
+		enable(self.controls.fine_step, on);
+		enable(self.controls.fine_label, on);
 	}
 
 	/// forces the next tick to restate what the knob is doing.
@@ -358,14 +410,37 @@ impl App {
 			"knob - no target".to_owned()
 		} else {
 			match self.mixer.volume(&target).ok().flatten() {
-				| Some(level) => {
-					format!("knob - {target} {}%", (level * 100.0).round() as i32)
-				},
+				| Some(level) => format!("knob - {target} {}", percent(level)),
 				| None => format!("knob - {target} (silent)"),
 			}
 		};
 
 		self.tray.set_tooltip(&text);
+	}
+}
+
+/// a decimal only where the fine step can actually produce one, so the ordinary
+/// case still reads as a whole number.
+fn percent(level: f32) -> String {
+	let tenths = (f64::from(level) * 1000.0).round() as i64;
+
+	if tenths % 10 == 0 {
+		format!("{}%", tenths / 10)
+	} else {
+		format!("{}.{}%", tenths / 10, tenths % 10)
+	}
+}
+
+fn fine_step_text(tenths: i32) -> String {
+	format!("Fine step: {}.{}% per detent", tenths / 10, tenths % 10)
+}
+
+/// the first threshold is the one that turns the fine zone off.
+fn threshold_text(percent: u8) -> String {
+	if percent == 0 {
+		"Off".to_owned()
+	} else {
+		format!("{percent}%")
 	}
 }
 

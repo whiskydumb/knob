@@ -25,6 +25,59 @@ use crate::win::from_wide;
 /// one enumeration rather than one per click.
 const CACHE_TTL: Duration = Duration::from_millis(1500);
 
+/// a hundredth of a percentage point. levels this close to the threshold are
+/// treated as sitting exactly on it, so the rounding error left by a chain of
+/// f32 additions cannot decide which side of the boundary a detent lands on.
+const EDGE: f32 = 0.000_1;
+
+/// the level is stored as an f32 the size of the finest step, so every write is
+/// pulled back onto a tenth of a percentage point. without it a long turn would
+/// accumulate the error of every addition along the way.
+const GRID: f32 = 1000.0;
+
+/// how far one detent moves the level, which is not one number: near the bottom
+/// of the range the scalar core audio exposes is linear in amplitude, so a
+/// whole percent there is already a large jump and the step shrinks.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StepCurve {
+	coarse: f32,
+	fine: f32,
+	/// the level below which `fine` applies; zero leaves the step constant.
+	threshold: f32,
+}
+
+impl StepCurve {
+	/// a fine step larger than the coarse one would make the knob speed up as
+	/// it goes quieter, so it is capped rather than rejected.
+	pub(crate) fn new(coarse: f32, fine: f32, threshold: f32) -> Self {
+		Self {
+			coarse,
+			fine: fine.min(coarse),
+			threshold,
+		}
+	}
+
+	/// where a single detent from `current` lands.
+	pub(crate) fn apply(self, current: f32, up: bool) -> f32 {
+		snap((current + self.delta(current, up)).clamp(0.0, 1.0))
+	}
+
+	/// the threshold belongs to the fine zone going down and to the coarse one
+	/// going up, which is what makes every detent exactly reversible: 10%
+	/// lowers to 9.5% and 9.5% raises back to 10%, while 10% raises to 15%.
+	fn delta(self, current: f32, up: bool) -> f32 {
+		let fine = if up {
+			current < self.threshold - EDGE
+		} else {
+			current <= self.threshold + EDGE
+		};
+
+		let step = if fine { self.fine } else { self.coarse };
+
+		if up { step } else { -step }
+	}
+}
+
 pub(crate) struct Mixer {
 	enumerator: IMMDeviceEnumerator,
 	cache: Option<Cache>,
@@ -85,15 +138,22 @@ impl Mixer {
 	}
 
 	/// a target can own several sessions at once, since every chromium-based
-	/// browser spreads audio over a handful of renderer processes, so the delta
-	/// is applied to all of them and the first result is reported back.
-	pub(crate) fn adjust(&mut self, target: &str, delta: f32) -> Result<Option<f32>> {
+	/// browser spreads audio over a handful of renderer processes, so the step
+	/// is applied to all of them and the first result is reported back. the
+	/// curve is asked once per session rather than once per turn, because two
+	/// sessions can sit on opposite sides of the threshold.
+	pub(crate) fn adjust(
+		&mut self,
+		target: &str,
+		curve: StepCurve,
+		up: bool,
+	) -> Result<Option<f32>> {
 		let sessions = self.sessions_for(target)?;
 		let mut landed = None;
 
 		for session in &sessions {
 			let moved = unsafe { session.GetMasterVolume() }.and_then(|current| {
-				let next = (current + delta).clamp(0.0, 1.0);
+				let next = curve.apply(current, up);
 				unsafe { session.SetMasterVolume(next, std::ptr::null()) }.map(|()| next)
 			});
 
@@ -135,7 +195,9 @@ impl Mixer {
 			.and_then(|session| unsafe { session.GetMasterVolume() }.ok()))
 	}
 
-	pub(crate) fn invalidate(&mut self) { self.cache = None; }
+	pub(crate) fn invalidate(&mut self) {
+		self.cache = None;
+	}
 
 	fn sessions_for(&mut self, target: &str) -> Result<Vec<ISimpleAudioVolume>> {
 		let fresh = self.cache.as_ref().is_some_and(|cache| {
@@ -200,6 +262,10 @@ impl Mixer {
 		unsafe { device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) }
 			.context("failed to open the audio session manager")
 	}
+}
+
+fn snap(level: f32) -> f32 {
+	(level * GRID).round() / GRID
 }
 
 /// `None` for the system sounds pseudo-session and for processes that have

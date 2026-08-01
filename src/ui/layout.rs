@@ -12,6 +12,7 @@ use windows::{
 				TBS_AUTOTICKS, TBS_HORZ,
 			},
 			HiDpi::{GetDpiForWindow, SystemParametersInfoForDpi},
+			Input::KeyboardAndMouse::EnableWindow,
 			WindowsAndMessaging::{
 				BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
 				CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBS_AUTOHSCROLL,
@@ -37,11 +38,13 @@ pub(crate) mod id {
 	pub(crate) const PRESS: i32 = 1006;
 	pub(crate) const STARTUP: i32 = 1007;
 	pub(crate) const SAVE: i32 = 1008;
+	pub(crate) const FINE_STEP: i32 = 1009;
+	pub(crate) const FINE_BELOW: i32 = 1010;
 }
 
 /// client area at 96 dpi, in device independent pixels.
 pub(crate) const CLIENT_WIDTH: i32 = 400;
-pub(crate) const CLIENT_HEIGHT: i32 = 322;
+pub(crate) const CLIENT_HEIGHT: i32 = 384;
 
 /// for a combo box this is the height of the dropped-down list, not of the
 /// field.
@@ -59,10 +62,13 @@ pub(crate) struct Controls {
 	pub(crate) raise: HWND,
 	pub(crate) lower: HWND,
 	pub(crate) step: HWND,
+	pub(crate) fine_step: HWND,
+	pub(crate) fine_below: HWND,
 	pub(crate) press: HWND,
 	pub(crate) startup: HWND,
 	pub(crate) save: HWND,
 	pub(crate) step_label: HWND,
+	pub(crate) fine_label: HWND,
 	pub(crate) status: HWND,
 	labels: Vec<HWND>,
 	font: HFONT,
@@ -82,6 +88,7 @@ impl Controls {
 		label(w!("Target application"))?;
 		label(w!("Raise volume key"))?;
 		label(w!("Lower volume key"))?;
+		label(w!("Fine step below"))?;
 		label(w!("Knob press"))?;
 
 		let dropdown = CBS_DROPDOWNLIST as u32;
@@ -92,11 +99,14 @@ impl Controls {
 		let raise = combo(parent, id::RAISE, dropdown)?;
 		let lower = combo(parent, id::LOWER, dropdown)?;
 		let step = trackbar(parent, id::STEP)?;
+		let fine_step = trackbar(parent, id::FINE_STEP)?;
+		let fine_below = combo(parent, id::FINE_BELOW, dropdown)?;
 		let press = combo(parent, id::PRESS, dropdown)?;
 		let startup =
 			button(parent, id::STARTUP, w!("Launch on startup"), BS_AUTOCHECKBOX as u32)?;
 		let save = button(parent, id::SAVE, w!("Save"), BS_DEFPUSHBUTTON as u32)?;
 		let step_label = static_text(parent, w!("Volume step"), SS_LEFT)?;
+		let fine_label = static_text(parent, w!("Fine step"), SS_LEFT)?;
 		let status = static_text(parent, w!(""), SS_LEFT | SS_END_ELLIPSIS)?;
 
 		let mut controls = Self {
@@ -105,10 +115,13 @@ impl Controls {
 			raise,
 			lower,
 			step,
+			fine_step,
+			fine_below,
 			press,
 			startup,
 			save,
 			step_label,
+			fine_label,
 			status,
 			labels,
 			font: HFONT::default(),
@@ -149,7 +162,8 @@ impl Controls {
 			(16, 12, full, 18),
 			(16, 68, half, 18),
 			(right, 68, half, 18),
-			(16, 186, full, 18),
+			(right, 186, half, 18),
+			(16, 248, full, 18),
 		];
 		for (handle, (x, y, width, height)) in self.labels.iter().zip(labels) {
 			place(*handle, x, y, width, height);
@@ -161,10 +175,13 @@ impl Controls {
 		place(self.lower, right, 88, half, LIST_HEIGHT);
 		place(self.step_label, 16, 124, full, 18);
 		place(self.step, 16, 144, full, 32);
-		place(self.press, 16, 206, full, LIST_HEIGHT);
-		place(self.startup, 16, 244, full, 22);
-		place(self.status, 16, 282, 240, 20);
-		place(self.save, 274, 276, 110, 30);
+		place(self.fine_label, 16, 186, half, 18);
+		place(self.fine_step, 16, 206, half, 32);
+		place(self.fine_below, right, 206, half, LIST_HEIGHT);
+		place(self.press, 16, 268, full, LIST_HEIGHT);
+		place(self.startup, 16, 306, full, 22);
+		place(self.status, 16, 344, 240, 20);
+		place(self.save, 274, 338, 110, 30);
 	}
 
 	pub(crate) fn refresh_font(&mut self, parent: HWND) {
@@ -183,10 +200,13 @@ impl Controls {
 			self.raise,
 			self.lower,
 			self.step,
+			self.fine_step,
+			self.fine_below,
 			self.press,
 			self.startup,
 			self.save,
 			self.step_label,
+			self.fine_label,
 			self.status,
 		]
 		.into_iter()
@@ -359,6 +379,12 @@ pub(crate) fn check_set(handle: HWND, checked: bool) {
 	let state = if checked { BST_IS_CHECKED } else { 0 };
 
 	unsafe { SendMessageW(handle, BM_SETCHECK, Some(WPARAM(state)), None) };
+}
+
+/// a disabled static draws greyed, which is what marks a setting as inert
+/// rather than merely unused.
+pub(crate) fn enable(handle: HWND, enabled: bool) {
+	unsafe { EnableWindow(handle, enabled) }.discard();
 }
 
 pub(crate) fn check_get(handle: HWND) -> bool {
