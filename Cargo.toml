@@ -1,0 +1,226 @@
+[package]
+name = "knob"
+version = "1.0.0"
+description = "a tiny sound mixer that drives one application's volume from the media keys or a hardware knob"
+license = "MIT"
+repository = "https://github.com/whiskydumb/knob"
+readme = "README.md"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_Audio",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[workspace]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+authors = ["whisky <me@whisky.sh>"]
+
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dbg]
+inherits = "dev"
+debug = "full"
+
+[profile.dbg.package."*"]
+debug = "limited"
+
+[profile.bench]
+strip = "none"
+debug = "line-tables-only"
+overflow-checks = false
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+overflow-checks = true
+
+[profile.release-dbg]
+inherits = "release"
+debug = "full"
+strip = "none"
+
+[profile.release-dbg.package."*"]
+debug = "limited"
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+[workspace.lints.rust]
+absolute-paths-not-starting-with-crate = "warn"
+ambiguous-negative-literals = "warn"
+closure-returning-async-block = "warn"
+deprecated-in-future = "warn"
+deref-into-dyn-supertrait = "warn"
+elided-lifetimes-in-paths = "warn"
+explicit-outlives-requirements = "warn"
+ffi-unwind-calls = "warn"
+impl-trait-redundant-captures = "warn"
+keyword-idents = "warn"
+macro-use-extern-crate = "warn"
+meta-variable-misuse = "warn"
+missing-abi = "warn"
+missing-copy-implementations = "warn"
+non-ascii-idents = "warn"
+redundant-imports = "warn"
+redundant-lifetimes = "warn"
+semicolon-in-expressions-from-macros = "warn"
+single-use-lifetimes = "warn"
+trivial-casts = "warn"
+trivial-numeric-casts = "warn"
+unit-bindings = "warn"
+unnameable-types = "warn"
+unreachable-pub = "warn"
+unsafe-op-in-unsafe-fn = "warn"
+unstable-features = "warn"
+unused-extern-crates = "warn"
+unused-import-braces = "warn"
+unused-lifetimes = "warn"
+unused-macro-rules = "warn"
+unused-must-use = "warn"
+unused-qualifications = "warn"
+
+unsafe-code = "allow"
+
+dead-code-pub-in-binary = "allow"
+mismatched-lifetime-syntaxes = "allow"
+
+[workspace.lints.clippy]
+cargo = { level = "warn", priority = -1 }
+cargo_common_metadata = { level = "allow", priority = 1 }
+multiple_crate_versions = { level = "allow", priority = 1 }
+
+complexity = { level = "warn", priority = -1 }
+needless_update = { level = "allow", priority = 1 }
+
+correctness = { level = "deny", priority = -1 }
+
+nursery = { level = "warn", priority = -1 }
+missing_const_for_fn = { level = "allow", priority = 1 }
+redundant_pub_crate = { level = "allow", priority = 1 }
+significant_drop_tightening = { level = "allow", priority = 1 }
+tuple_array_conversions = { level = "allow", priority = 1 }
+
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = { level = "allow", priority = 1 }
+cast_possible_wrap = { level = "allow", priority = 1 }
+cast_sign_loss = { level = "allow", priority = 1 }
+default_trait_access = { level = "allow", priority = 1 }
+doc_markdown = { level = "allow", priority = 1 }
+enum_glob_use = { level = "allow", priority = 1 }
+if_not_else = { level = "allow", priority = 1 }
+inline_always = { level = "allow", priority = 1 }
+map_unwrap_or = { level = "allow", priority = 1 }
+match_bool = { level = "allow", priority = 1 }
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+module_name_repetitions = { level = "allow", priority = 1 }
+similar_names = { level = "allow", priority = 1 }
+struct_excessive_bools = { level = "allow", priority = 1 }
+struct_field_names = { level = "allow", priority = 1 }
+unnecessary_wraps = { level = "allow", priority = 1 }
+
+perf = { level = "warn", priority = -1 }
+
+style = { level = "warn", priority = -1 }
+assertions_on_constants = { level = "allow", priority = 1 }
+module_inception = { level = "allow", priority = 1 }
+obfuscated_if_else = { level = "allow", priority = 1 }
+toplevel_ref_arg = { level = "allow", priority = 1 }
+
+suspicious = { level = "warn", priority = -1 }
+let_underscore_future = { level = "allow", priority = 1 }
+
+allow_attributes = "warn"
+as_conversions = "allow"
+as_pointer_underscore = "warn"
+as_underscore = "warn"
+assertions_on_result_states = "warn"
+cognitive_complexity = "warn"
+create_dir = "warn"
+dbg_macro = "warn"
+default_union_representation = "warn"
+deref_by_slicing = "warn"
+doc_include_without_cfg = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+excessive_nesting = "warn"
+exit = "warn"
+filetype_is_file = "warn"
+float_cmp_const = "warn"
+fn_to_numeric_cast_any = "warn"
+format_push_string = "warn"
+get_unwrap = "warn"
+if_then_some_else_none = "warn"
+impl_trait_in_params = "warn"
+infinite_loop = "warn"
+large_include_file = "warn"
+let_underscore_must_use = "warn"
+let_underscore_untyped = "warn"
+lossy_float_literal = "warn"
+map_with_unused_argument_over_ranges = "warn"
+mem_forget = "warn"
+missing_assert_message = "warn"
+mixed_read_write_in_expression = "warn"
+multiple_unsafe_ops_per_block = "allow"
+mutex_atomic = "warn"
+mutex_integer = "warn"
+needless_raw_strings = "warn"
+non_zero_suggestions = "warn"
+pathbuf_init_then_push = "warn"
+pointer_format = "warn"
+precedence_bits = "warn"
+pub_without_shorthand = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+redundant_type_annotations = "warn"
+semicolon_outside_block = "warn"
+str_to_string = "warn"
+string_add = "warn"
+string_lit_chars_any = "warn"
+string_slice = "warn"
+suspicious_xor_used_as_pow = "warn"
+try_err = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unnecessary_self_imports = "warn"
+unneeded_field_pattern = "warn"
+unseparated_literal_suffix = "warn"
+unwrap_used = "warn"
+verbose_file_reads = "warn"

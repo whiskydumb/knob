@@ -1,0 +1,29 @@
+# build
+/target
+**/*.rs.bk
+
+# secrets and local overrides
+.env
+.env.*
+!.env.example
+.cargo/credentials*
+
+# coverage
+*.profraw
+/coverage
+lcov.info
+
+# profiling
+*.mm_profdata
+flamegraph.svg
+perf.data*
+
+# rustc crash dumps
+rustc-ice-*
+
+# patch and merge leftovers
+*.orig
+*.rej
+
+# nix
+/result*
